@@ -119,19 +119,6 @@ function Game() {
     }
   };
 
-  const getPostMoveMessage = () => {
-    if (game.inCheck()) {
-      return "Oh my! Someone's learned how to say 'check'. How... primitive.";
-    }
-    const randomTaunts = [
-      "How predictably pedestrian...",
-      "Is that what passes for strategy in your dimension?",
-      "Oh, bravo! You've mastered moving pieces. Next up: walking and chewing gum.",
-      "A move worthy of a preschool prodigy... and I don't mean that as a compliment.",
-      "*sigh* Must we continue this charade of competence?",
-    ];
-    return randomTaunts[Math.floor(Math.random() * randomTaunts.length)];
-  };
 
   const onDrop = (sourceSquare: string, targetSquare: string): boolean => {
     try {
