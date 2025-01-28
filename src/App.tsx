@@ -1,13 +1,18 @@
-import Game from './components/Game'
-import './App.css'
+import { BrowserRouter, Routes, Route } from 'react-router-dom';
+import Game from './components/Game';
+import WelcomeScreen from './components/WelcomeScreen';
+import Leaderboard from './components/Leaderboard';
 
 function App() {
   return (
-    <div className="App">
-      <h1>Planetary Chess</h1>
-      <Game />
-    </div>
-  )
+    <BrowserRouter>
+      <Routes>
+        <Route path="/" element={<WelcomeScreen />} />
+        <Route path="/game" element={<Game />} />
+        <Route path="/leaderboard" element={<Leaderboard />} />
+      </Routes>
+    </BrowserRouter>
+  );
 }
 
-export default App
+export default App;
