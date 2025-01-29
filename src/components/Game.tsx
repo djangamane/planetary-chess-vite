@@ -180,57 +180,65 @@ function Game() {
   const questionNumber = gameState.usedQuestions.length + 1;
   const totalQuestions = quizQuestions.length;
 
+
   return (
-    <div className="flex flex-col items-center justify-start w-full min-h-screen bg-gray-900">
-      <div className="w-full max-w-4xl p-8">
-        <h1 className="text-4xl font-bold text-center text-white mb-8">Planetary Chess</h1>
+    <div className="flex flex-col items-center justify-center min-h-screen bg-gray-900">
+      <div className="w-full max-w-[800px]"> {/* Increased max width significantly */}
+        <div className="flex flex-col items-center space-y-1"> {/* Reduced spacing */}
+          <h1 className="text-xl font-bold text-white">Planetary Chess</h1>
+          <h2 className="text-sm text-white text-center">
+            {isThinking ? (
+              <span>
+                AI Stewie is thinking...
+                <span className="ml-1 animate-spin inline-block">⚙️</span>
+              </span>
+            ) : (
+              `AI Stewie says: ${gameState.currentTaunt}`
+            )}
+          </h2>
+          <div className="text-gray-400 text-xs">
+            Question {questionNumber} of {totalQuestions}
+          </div>
+          <button 
+            onClick={() => navigate('/')} 
+            className="px-2 py-1 bg-gray-600 text-white rounded hover:bg-gray-700 
+                     transition-colors duration-200 text-xs font-semibold"
+          >
+            ← Back
+          </button>
 
-      <div className="relative mb-8">
-        <h2 className="text-xl text-white text-center mb-4">
-          {isThinking ? "AI Stewie is thinking..." : `AI Stewie says: ${gameState.currentTaunt}`}
-          {isThinking && <span className="ml-2 animate-spin inline-block">⚙️</span>}
-        </h2>
-        <div className="text-gray-400 text-center text-sm">
-          Question {questionNumber} of {totalQuestions}
+          <div className="w-[600px]"> {/* Fixed width for consistent board size */}
+            <Chessboard 
+              id="PlayVsAI"
+              position={game.fen()} 
+              onPieceDrop={onDrop}
+              boardOrientation="black"
+              boardWidth={600}
+            />
+          </div>
+
+          {gameState.isQuizVisible && (
+            <div className="w-full max-w-[600px] bg-gray-800 rounded shadow-lg p-2">
+              <h3 className="text-xs text-white mb-1">
+                {gameState.currentQuestion.question}
+              </h3>
+              <div className="grid gap-1">
+                {gameState.currentQuestion.options.map((option: string) => (
+                  <button
+                    key={option}
+                    onClick={() => handleQuizAnswer(option)}
+                    className="p-1 bg-blue-600 hover:bg-blue-700 text-white rounded 
+                             transition-colors text-xs whitespace-normal text-left"
+                  >
+                    {option}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
-      </div>
-
-      <button 
-        onClick={() => navigate('/')} 
-        className="px-6 py-3 bg-gray-600 text-white rounded-lg hover:bg-gray-700 
-                 transition-colors duration-200 font-semibold mb-4 shadow-lg"
-      >
-        ← Back to Home
-      </button>
-
-      <div className="mb-8">
-        <Chessboard 
-          id="PlayVsAI"
-          position={game.fen()} 
-          onPieceDrop={onDrop}
-          boardOrientation="black"
-        />
-      </div>
-
-      {gameState.isQuizVisible && (
-        <div className="p-6 bg-gray-800 rounded-lg shadow-lg">
-          <h3 className="text-xl text-white mb-4">
-            {gameState.currentQuestion.question}
-          </h3>
-          {gameState.currentQuestion.options.map((option: string) => (
-            <button
-              key={option}
-              onClick={() => handleQuizAnswer(option)}
-              className="w-full p-3 mb-3 bg-blue-600 hover:bg-blue-700 text-white rounded transition-colors"
-            >
-              {option}
-            </button>
-          ))}
-        </div>
-      )}
       </div>
     </div>
   );
-}
-
-export default Game;
+  }
+  export default Game;
