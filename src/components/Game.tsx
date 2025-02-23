@@ -181,78 +181,71 @@ function Game() {
   const totalQuestions = quizQuestions.length;
 
   return (
-<div className="flex flex-col items-center justify-center min-h-screen bg-gray-900 py-4 px-2">
-<div className="absolute left-1/2 transform -translate-x-1/2"> {/* Force center positioning */}
-        <div className="flex flex-col items-center gap-1">
-          {/* Header section */}
-          <div className="flex flex-col items-center gap-0.5">
-            <h1 className="text-lg font-bold text-white">Planetary Chess</h1>
-            <h2 className="text-xs text-white text-center leading-tight">
-              {isThinking ? (
-                <span>
-                  AI Stewie is thinking...
-                  <span className="ml-1 animate-spin inline-block">⚙️</span>
-                </span>
-              ) : (
-                `AI Stewie says: ${gameState.currentTaunt}`
-              )}
-            </h2>
-            <div className="text-gray-400 text-xs">
-              Question {questionNumber} of {totalQuestions}
-            </div>
-            <button 
-              onClick={() => navigate('/')} 
-              className="px-1.5 py-0.5 bg-gray-600 text-white rounded hover:bg-gray-700 
-                       transition-colors duration-200 text-xs font-semibold mb-1"
-            >
-              ← Back
-            </button>
-          </div>
-
-         {/* Chess board */}
-         <div className="w-full flex justify-center items-center">
-  <div className="w-full max-w-[400px] mx-auto">
-    <Chessboard 
-      id="PlayVsAI"
-      position={game.fen()} 
-      onPieceDrop={onDrop}
-      boardOrientation="black"
-      boardWidth={window.innerWidth < 450 ? window.innerWidth - 40 : 400}
-      customBoardStyle={{
-        display: 'block',
-        marginLeft: 'auto',
-        marginRight: 'auto'
-      }}
-    />
-  </div>
-</div>
-
-
-
-
-          {/* Quiz section */}
-          {gameState.isQuizVisible && (
-            <div className="w-[450px] bg-gray-800 rounded shadow-lg p-1.5 mt-1">
-              <h3 className="text-xs text-white mb-1 leading-tight">
-                {gameState.currentQuestion.question}
-              </h3>
-              <div className="grid gap-0.5">
-                {gameState.currentQuestion.options.map((option: string) => (
-                  <button
-                    key={option}
-                    onClick={() => handleQuizAnswer(option)}
-                    className="px-1.5 py-1 bg-blue-600 hover:bg-blue-700 text-white rounded 
-                             transition-colors text-xs whitespace-normal text-left"
-                  >
-                    {option}
-                  </button>
-                ))}
-              </div>
-            </div>
+    <div className="flex flex-col items-center justify-between h-screen bg-gray-900 overflow-hidden">
+      {/* Header Section */}
+      <div className="w-full text-center py-2 flex-shrink-0">
+        <h1 className="text-lg md:text-xl font-bold text-white">Planetary Chess</h1>
+        <h2 className="text-xs md:text-sm text-gray-300">
+          {isThinking ? (
+            <span>
+              AI Stewie is thinking...
+              <span className="ml-1 animate-spin inline-block">⚙️</span>
+            </span>
+          ) : (
+            `AI Stewie says: ${gameState.currentTaunt}`
           )}
+        </h2>
+        <div className="text-gray-400 text-xs md:text-sm">
+          Question {questionNumber} of {totalQuestions}
+        </div>
+        <button 
+          onClick={() => navigate('/')} 
+          className="px-2 py-1 bg-gray-700 text-white rounded hover:bg-gray-600 
+                     transition duration-200 text-xs font-semibold mt-2"
+        >
+          ← Back
+        </button>
+      </div>
+  
+      {/* Chessboard Section */}
+      <div className="flex-grow flex justify-center items-center">
+        <div className="w-[85vw] max-w-[320px] mx-auto">
+          <Chessboard 
+            id="PlayVsAI"
+            position={game.fen()} 
+            onPieceDrop={onDrop}
+            boardOrientation="black"
+            boardWidth={window.innerWidth < 400 ? window.innerWidth * 0.85 : 320}
+            customBoardStyle={{
+              display: 'block',
+              marginLeft: 'auto',
+              marginRight: 'auto'
+            }}
+          />
         </div>
       </div>
+  
+      {/* Quiz Section */}
+      {gameState.isQuizVisible && (
+        <div className="w-[85vw] max-w-[320px] bg-gray-800 rounded shadow-lg p-2 mb-2 overflow-hidden flex-shrink-0">
+          <h3 className="text-xs md:text-sm text-white mb-1 leading-tight text-center">
+            {gameState.currentQuestion.question}
+          </h3>
+          <div className="grid gap-1">
+            {gameState.currentQuestion.options.map((option: string) => (
+              <button
+                key={option}
+                onClick={() => handleQuizAnswer(option)}
+                className="w-full px-2 py-1 bg-blue-600 hover:bg-blue-700 text-white rounded 
+                         transition text-xs md:text-sm text-left"
+              >
+                {option}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
-  );
+  ); 
   }
   export default Game;
