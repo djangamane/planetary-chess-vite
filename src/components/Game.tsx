@@ -181,8 +181,8 @@ function Game() {
   const totalQuestions = quizQuestions.length;
 
   return (
-    <div className="flex flex-col items-center justify-center min-h-screen bg-gray-900 py-2 relative"> {/* Added relative */}
-      <div className="absolute left-1/2 transform -translate-x-1/2"> {/* Force center positioning */}
+<div className="flex flex-col items-center justify-center min-h-screen bg-gray-900 py-4 px-2">
+<div className="absolute left-1/2 transform -translate-x-1/2"> {/* Force center positioning */}
         <div className="flex flex-col items-center gap-1">
           {/* Header section */}
           <div className="flex flex-col items-center gap-0.5">
@@ -209,16 +209,25 @@ function Game() {
             </button>
           </div>
 
-          {/* Chess board */}
-          <div className="w-[450px]">
-            <Chessboard 
-              id="PlayVsAI"
-              position={game.fen()} 
-              onPieceDrop={onDrop}
-              boardOrientation="black"
-              boardWidth={450}
-            />
-          </div>
+         {/* Chess board */}
+<div className="w-full flex justify-center items-center">
+  <div className="w-[450px] mx-auto text-center">
+    <Chessboard 
+      id="PlayVsAI"
+      position={game.fen()} 
+      onPieceDrop={onDrop}
+      boardOrientation="black"
+      boardWidth={450}
+      customBoardStyle={{
+        display: 'block',
+        marginLeft: 'auto',
+        marginRight: 'auto'
+      }}
+    />
+  </div>
+</div>
+
+
 
           {/* Quiz section */}
           {gameState.isQuizVisible && (
