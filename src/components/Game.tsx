@@ -210,14 +210,14 @@ function Game() {
           </div>
 
          {/* Chess board */}
-<div className="w-full flex justify-center items-center">
-  <div className="w-[450px] mx-auto text-center">
+         <div className="w-full flex justify-center items-center">
+  <div className="w-full max-w-[400px] mx-auto">
     <Chessboard 
       id="PlayVsAI"
       position={game.fen()} 
       onPieceDrop={onDrop}
       boardOrientation="black"
-      boardWidth={450}
+      boardWidth={window.innerWidth < 450 ? window.innerWidth - 40 : 400}
       customBoardStyle={{
         display: 'block',
         marginLeft: 'auto',
@@ -226,6 +226,7 @@ function Game() {
     />
   </div>
 </div>
+
 
 
 
