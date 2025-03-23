@@ -1,50 +1,59 @@
 # Planetary Chess
 
-A React-based chess game featuring an AI opponent (Stewie from Family Guy) with dynamic difficulty based on quiz performance. Players play as Black against Stewie (White), with each move triggering chess trivia questions.
+A futuristic chess game featuring AI Cyber Stewie as the opponent. The game combines chess strategy with quiz questions about systemic racism, inspired by Dr. Francis Cress Welsing's concept of Planetary Chess.
 
 ## Features
-- Interactive chess board with legal move validation
-- Stockfish AI integration with dynamic difficulty levels
-- Quiz system with cycling questions
-- Stewie-themed taunts based on quiz performance
-- Checkmate/game end detection
 
-## Setup Instructions
+- Futuristic UI with advanced tech aesthetic
+- Answer quiz questions correctly to weaken your AI opponent
+- Responsive design that works on desktop and mobile devices
+- Interactive chessboard with custom styling
 
-### Prerequisites
-- Node.js (v14 or higher)
-- npm (comes with Node.js)
-- Git
+## Development
 
-### First-Time Setup
-1. Clone the repository:
+This project is built with:
+- React
+- TypeScript
+- Vite
+- chess.js and react-chessboard
+
+### Running locally
+
 ```bash
-git clone https://github.com/djangamane/planetary-chess-vite.git
-```
-
-2. Navigate to project directory:
-```bash
-cd planetary-chess-vite
-```
-
-3. Install dependencies:
-```bash
+# Install dependencies
 npm install
-```
 
-4. Start development server:
-```bash
+# Start the development server
 npm run dev
 ```
 
-5. Open your browser and visit `http://localhost:5173`
+### Building for production
 
-### Playing the Game
-1. The game starts with a quiz (Stewie/White moves first)
-2. Answer the quiz question to determine AI difficulty
-3. Make your move as Black
-4. Each move triggers a new quiz question
-5. Continue until checkmate or game end
+```bash
+npm run build
+```
+
+## Deploying to Render
+
+This project is configured for easy deployment on Render as a static site.
+
+1. Push your code to a GitHub/GitLab repository
+2. Create a new Static Site on Render
+3. Connect your repository
+4. Use these settings:
+   - Build Command: `npm install && npm run build`
+   - Publish Directory: `dist`
+5. Click "Create Static Site"
+
+The render.yaml file is provided for convenience if you want to use Render's Blueprint feature for deployment.
+
+## Mobile Support
+
+The project also includes Capacitor configuration for Android builds. To build for Android:
+
+1. Ensure you have Android development environment set up
+2. Run: `npx cap sync`
+3. Open Android Studio: `npx cap open android`
 
 ## Technical Details
 - Built with React 18 and TypeScript
