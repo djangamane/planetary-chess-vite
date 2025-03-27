@@ -3,6 +3,8 @@ import { Chess, type Chess as ChessType } from 'chess.js';
 import { Chessboard } from 'react-chessboard';
 import { quizQuestions, type QuizQuestion } from '../data/quizQuestions';
 import { useNavigate } from 'react-router-dom';
+import { supabase } from '../supabaseClient';
+import { calculateScore } from '../utils/scoring';
 import { shuffle } from 'lodash';
 
 type GameState = {
@@ -12,6 +14,7 @@ type GameState = {
   isQuizVisible: boolean;
   lastMoveCorrect: boolean | null;
   currentTaunt: string;
+  isGameOver: boolean; // Added to track game over state explicitly
 };
 
 function Game() {
@@ -19,6 +22,9 @@ function Game() {
   const [game] = useState<ChessType>(new Chess());
   const [isThinking, setIsThinking] = useState(false);
 
+  const [correctAnswersCount, setCorrectAnswersCount] = useState(0);
+  const [questionsResetCount, setQuestionsResetCount] = useState(0);
+  const [incorrectAnswersCount, setIncorrectAnswersCount] = useState(0);
   // Initialize game state with shuffled questions
   const [gameState, setGameState] = useState<GameState>(() => {
     const shuffledQuestions = shuffle([...quizQuestions]);
@@ -28,7 +34,8 @@ function Game() {
       usedQuestions: [],
       isQuizVisible: true,
       lastMoveCorrect: null,
-      currentTaunt: "Before I make my first move, let's see how much you know..."
+      currentTaunt: "Before I make my first move, let's see how much you know...",
+      isGameOver: false, // Initialize game over state
     };
   });
 
@@ -36,18 +43,147 @@ function Game() {
 
   // Get next question and handle reshuffling when all questions are used
   const getNextQuestion = (): [QuizQuestion, QuizQuestion[], QuizQuestion[]] => {
-    if (gameState.remainingQuestions.length === 0) {
-      // All questions used, reshuffle excluding the current question
-      const newShuffled = shuffle([...gameState.usedQuestions]);
-      return [newShuffled[0], newShuffled.slice(1), []];
+    // Check if we need to reshuffle (all questions used)
+    const needReshuffle = gameState.remainingQuestions.length === 0;
+
+    // Increment reset count if reshuffling
+    if (needReshuffle) {
+      setQuestionsResetCount(prev => prev + 1);
+      console.log("DEBUG: Reshuffling questions, incrementing reset count.");
     }
 
-    return [
-      gameState.remainingQuestions[0],
-      gameState.remainingQuestions.slice(1),
-      [...gameState.usedQuestions, gameState.currentQuestion]
-    ];
+    const questionsToShuffle = needReshuffle ? [...gameState.usedQuestions] : [...gameState.remainingQuestions];
+    const shuffled = shuffle(questionsToShuffle);
+
+    const nextQuestion = shuffled[0];
+    const nextRemaining = shuffled.slice(1);
+    // If we reshuffled, usedQuestions starts fresh (excluding the new current one)
+    // Otherwise, add the current question to usedQuestions
+    const nextUsed = needReshuffle ? [] : [...gameState.usedQuestions, gameState.currentQuestion];
+
+    return [nextQuestion, nextRemaining, nextUsed];
   };
+
+
+  // --- Centralized Game Status Check ---
+  const checkGameStatusAndUpdateState = async () => {
+    console.log(`DEBUG: Checking game status. isGameOver: ${game.isGameOver()}, isCheckmate: ${game.isCheckmate()}, turn: ${game.turn()}`);
+
+    if (game.isCheckmate()) {
+      // Corrected logic based on logs: turn() indicates the player who CANNOT move.
+      const playerWon = game.turn() === 'w'; // White (Player) cannot move => Player Won
+      const aiWon = game.turn() === 'b';    // Black (AI) cannot move => AI Won
+
+      if (playerWon) {
+        // --- PLAYER WIN CONDITION ---
+        console.log("Player win condition met!");
+        const moves = game.history().length;
+        // Pass the reset count to the scoring function
+        const score = calculateScore(correctAnswersCount, incorrectAnswersCount, Math.ceil(moves / 2), questionsResetCount);
+        // Update log to include reset count
+        console.log(`Calculated Score: ${score}, Correct: ${correctAnswersCount}, Incorrect: ${incorrectAnswersCount}, Moves: ${Math.ceil(moves / 2)}, Resets: ${questionsResetCount}`);
+
+        setGameState(prev => ({ ...prev, isGameOver: true, isQuizVisible: false })); // Mark game over immediately
+
+        // Handle leaderboard logic (async)
+        try {
+          console.log("Fetching leaderboard...");
+          const { data: leaderboard, error: fetchError } = await supabase
+            .from('scores')
+            .select('score')
+            .order('score', { ascending: false })
+            .limit(10);
+
+          if (fetchError) throw fetchError;
+          console.log("Leaderboard data:", leaderboard);
+
+          const qualifies = !leaderboard || leaderboard.length < 10 || score > leaderboard[leaderboard.length - 1].score;
+          console.log(`Qualifies for leaderboard: ${qualifies}`);
+
+          if (qualifies) {
+            console.log("Prompting for name...");
+            const playerName = window.prompt(`You have ranked on the Planetary Chess leaderboard with a score of ${score}! What's your handle?`);
+            console.log(`Player entered name: ${playerName}`);
+
+            if (playerName && playerName.trim() !== '') {
+              console.log("Saving score to Supabase...");
+              const { error: insertError } = await supabase
+                .from('scores')
+                .insert([{ name: playerName.trim(), score: score }]);
+
+              if (insertError) throw insertError;
+
+              console.log("Score saved successfully.");
+              setGameState(prev => ({ ...prev, currentTaunt: `Checkmate! Score: ${score}. Saved to leaderboard as ${playerName.trim()}!` }));
+            } else {
+              console.log("Player cancelled or entered empty name.");
+              setGameState(prev => ({ ...prev, currentTaunt: `Checkmate! Score: ${score}. You qualified but didn't enter a name.` }));
+            }
+          } else {
+            setGameState(prev => ({ ...prev, currentTaunt: `Checkmate! Your score: ${score}. Not quite enough for the leaderboard this time.` }));
+          }
+        } catch (err) {
+          console.error("Error handling win condition:", err);
+          const errorMessage = err instanceof Error ? err.message : String(err);
+          setGameState(prev => ({ ...prev, currentTaunt: `Checkmate! Score: ${score}. An error occurred processing the leaderboard: ${errorMessage}` }));
+        }
+        return true; // Game ended
+
+      } else if (aiWon) {
+        // --- AI WIN CONDITION ---
+        console.log("AI win condition met.");
+        setGameState(prev => ({
+          ...prev,
+          isGameOver: true,
+          isQuizVisible: false,
+          currentTaunt: "Hah! Checkmated by a baby. How delightfully pathetic! Your intellectual genealogy is as shallow as a colonial water basin."
+        }));
+        return true; // Game ended
+      }
+    } else if (game.isDraw()) {
+      console.log("Draw condition met.");
+      setGameState(prev => ({
+        ...prev,
+        isGameOver: true,
+        isQuizVisible: false,
+        currentTaunt: "A draw? How dreadfully bourgeois. Like watching American Idol without the satisfaction of seeing dreams crushed."
+      }));
+      return true; // Game ended
+    } else if (game.isStalemate()) {
+      console.log("Stalemate condition met.");
+      setGameState(prev => ({
+        ...prev,
+        isGameOver: true,
+        isQuizVisible: false,
+        currentTaunt: "Stalemate? How pedestrian. Like a Walmart shopper trying to haggle."
+      }));
+      return true; // Game ended
+    } else if (game.isInsufficientMaterial()) {
+       console.log("Insufficient material condition met.");
+       setGameState(prev => ({
+        ...prev,
+        isGameOver: true,
+        isQuizVisible: false,
+        currentTaunt: "Insufficient material? A pathetic end. Like bringing a spork to a laser gun fight."
+      }));
+      return true; // Game ended
+    } else if (game.isThreefoldRepetition()) {
+       console.log("Threefold repetition condition met.");
+       setGameState(prev => ({
+        ...prev,
+        isGameOver: true,
+        isQuizVisible: false,
+        currentTaunt: "Threefold repetition? Are you stuck in a temporal loop, you simpleton?"
+      }));
+      return true; // Game ended
+    }
+
+    // --- Game Continues ---
+    console.log("Game continues.");
+    return false; // Game did not end
+  };
+  // --- End Centralized Game Status Check ---
+
 
   useEffect(() => {
     stockfishRef.current = new Worker('/stockfish.js');
@@ -58,123 +194,121 @@ function Game() {
     return () => stockfishRef.current?.terminate();
   }, []);
 
-  const getGameEndMessage = () => {
-    if (game.isGameOver()) {
-      if (game.isCheckmate()) {
-        return game.turn() === 'b'
-          ? "Hah! Checkmated by a baby. How delightfully pathetic! Your intellectual genealogy is as shallow as a colonial water basin."
-          : "What?! This is preposterous! I demand a rematch... after I finish this episode of Jolly Farm Revue.";
-      }
-      if (game.isDraw()) {
-        return "A draw? How dreadfully bourgeois. Like watching American Idol without the satisfaction of seeing dreams crushed.";
-      }
-      if (game.isStalemate()) {
-        return "Stalemate? How pedestrian. Like a Walmart shopper trying to haggle.";
-      }
-      return "Game Over! Though the circumstances are... unclear.";
-    }
-    return null;
-  };
 
-  const handleStockfishMessage = (e: MessageEvent) => {
+  const handleStockfishMessage = async (e: MessageEvent) => {
     const message = e.data;
     if (message.startsWith('bestmove')) {
       const move = message.split(' ')[1];
-      game.move(move);
+      console.log(`DEBUG: Stockfish suggests move: ${move}`);
+      if (move && move !== '(none)') { // Ensure move is valid
+         game.move(move);
+      } else {
+         console.warn("Stockfish returned invalid move:", move);
+      }
       setIsThinking(false);
 
-      const endMessage = getGameEndMessage();
-      if (endMessage) {
+      // Check game status AFTER AI move
+      const gameEnded = await checkGameStatusAndUpdateState();
+
+      if (!gameEnded) {
+        // If game didn't end, it's player's turn, don't show quiz
         setGameState(prev => ({
           ...prev,
-          isQuizVisible: false,
-          currentTaunt: endMessage
+          isQuizVisible: false, // Hide quiz after AI moves
+          currentTaunt: prev.currentTaunt // Keep the taunt from the quiz answer
         }));
-        return;
       }
-
-      setGameState(prev => ({
-        ...prev,
-        isQuizVisible: false
-      }));
     }
   };
 
   const makeAIMove = (difficulty: 'easy' | 'hard') => {
+    if (gameState.isGameOver) return; // Don't move if game is already over
+
     setIsThinking(true);
-    const depth = difficulty === 'easy' 
-      ? Math.floor(Math.random() * 3) + 3
-      : Math.floor(Math.random() * 3) + 16;
+    // Lower the 'easy' depth range to 1-3
+    const depth = difficulty === 'easy'
+      ? Math.floor(Math.random() * 3) + 1
+      : Math.floor(Math.random() * 3) + 16; // Keep 'hard' depth as 16-18
 
-    if (difficulty === 'easy' && Math.random() < 0.2) {
-      const moves = game.moves();
-      const randomMove = moves[Math.floor(Math.random() * moves.length)];
-      game.move(randomMove);
-      setIsThinking(false);
-      setGameState(prev => ({
-        ...prev,
-        isQuizVisible: false,
-        currentTaunt: "Your move!"
-      }));
-      return;
-    }
-
+    // Simplified: Always use Stockfish for now, remove random move logic
+    console.log(`DEBUG: Requesting Stockfish move with depth ${depth}`);
     stockfishRef.current?.postMessage(`position fen ${game.fen()}`);
     stockfishRef.current?.postMessage(`go depth ${depth}`);
   };
 
   const handleQuizAnswer = (selectedAnswer: string) => {
+    if (gameState.isGameOver) return; // Don't process if game over
+
     const isCorrect = selectedAnswer === gameState.currentQuestion.correctAnswer;
 
-    if (!game.isGameOver()) {
-      const [nextQuestion, nextRemaining, nextUsed] = getNextQuestion();
-
-      setGameState(prev => ({
-        ...prev,
-        currentQuestion: nextQuestion,
-        remainingQuestions: nextRemaining,
-        usedQuestions: nextUsed,
-        isQuizVisible: false,
-        lastMoveCorrect: isCorrect,
-        currentTaunt: isCorrect 
-          ? gameState.currentQuestion.tauntCorrect 
-          : gameState.currentQuestion.tauntIncorrect
-      }));
-
-      makeAIMove(isCorrect ? 'easy' : 'hard');
+    // Update answer counts
+    if (isCorrect) {
+      setCorrectAnswersCount(prev => prev + 1);
+    } else {
+      setIncorrectAnswersCount(prev => prev + 1);
     }
+
+    const [nextQuestion, nextRemaining, nextUsed] = getNextQuestion();
+
+    // Set taunt based on answer, prepare for AI move
+    setGameState(prev => ({
+      ...prev,
+      currentQuestion: nextQuestion,
+      remainingQuestions: nextRemaining,
+      usedQuestions: nextUsed,
+      isQuizVisible: false, // Hide quiz immediately
+      lastMoveCorrect: isCorrect,
+      currentTaunt: isCorrect
+        ? gameState.currentQuestion.tauntCorrect
+        : gameState.currentQuestion.tauntIncorrect
+    }));
+
+    // Trigger AI move after setting state
+    makeAIMove(isCorrect ? 'easy' : 'hard');
   };
 
+  // Must be synchronous for react-chessboard
   const onDrop = (sourceSquare: string, targetSquare: string): boolean => {
+    if (gameState.isGameOver) return false; // Don't allow moves if game over
+
+    let moveSuccessful = false;
     try {
       const move = game.move({
         from: sourceSquare,
         to: targetSquare,
-        promotion: 'q'
+        promotion: 'q' // Assuming promotion to queen
       });
 
-      if (move === null) return false;
+      if (move === null) {
+        console.log("DEBUG: Invalid player move attempted.");
+        moveSuccessful = false;
+      } else {
+         console.log(`DEBUG: Player moved ${sourceSquare}-${targetSquare}`);
+         moveSuccessful = true;
 
-      const endMessage = getGameEndMessage();
-      if (endMessage) {
-        setGameState(prev => ({
-          ...prev,
-          isQuizVisible: false,
-          currentTaunt: endMessage
-        }));
-        return true;
+         // Call the async check function but don't await it
+         checkGameStatusAndUpdateState().then(gameEnded => {
+            if (!gameEnded) {
+              // If game didn't end, show quiz for AI's turn
+              console.log("DEBUG: Game continues, showing quiz.");
+              setGameState(prev => ({
+                ...prev,
+                isQuizVisible: true // Show quiz before AI moves
+              }));
+            }
+         }).catch(err => {
+             // Handle potential errors from the async check if necessary
+             console.error("Error during async game status check:", err);
+         });
       }
 
-      setGameState(prev => ({
-        ...prev,
-        isQuizVisible: true
-      }));
-
-      return true;
     } catch (error) {
       console.error('Move error:', error);
-      return false;
+      moveSuccessful = false; // Move failed
     }
+
+    // Return the synchronous result of the move attempt
+    return moveSuccessful;
   };
 
   const questionNumber = gameState.usedQuestions.length + 1;
@@ -182,7 +316,7 @@ function Game() {
 
   // Create a Stewie avatar image tag that links to the main image
   const stewieAvatar = (
-    <div 
+    <div
       style={{
         position: 'relative',
         width: '80px',
@@ -196,8 +330,8 @@ function Game() {
         background: 'radial-gradient(circle at center, #0c1b30 0%, #050c17 90%)'
       }}
     >
-      <img 
-        src="/assets/stewie.png" 
+      <img
+        src="/assets/stewie.png" // Ensure this path is correct relative to the public folder
         alt="AI Stewie"
         style={{
           width: '100%',
@@ -245,20 +379,20 @@ function Game() {
   );
 
   // Custom light and dark square colors for the chess board
-  const customDarkSquareStyle = { 
-    backgroundColor: '#193f6e', 
+  const customDarkSquareStyle = {
+    backgroundColor: '#193f6e',
     boxShadow: 'inset 0 0 3px rgba(0, 195, 255, 0.3)'
   };
-  const customLightSquareStyle = { 
-    backgroundColor: '#236ab0', 
+  const customLightSquareStyle = {
+    backgroundColor: '#236ab0',
     boxShadow: 'inset 0 0 3px rgba(255, 255, 255, 0.2)'
   };
 
   return (
-    <div 
+    <div
       style={{
         display: 'flex',
-        flexDirection: 'column', 
+        flexDirection: 'column',
         justifyContent: 'space-between',
         alignItems: 'center',
         minHeight: '100vh',
@@ -269,49 +403,13 @@ function Game() {
       }}
     >
       {/* Digital circuit decoration */}
-      <div style={{
-        position: 'absolute',
-        top: 0,
-        left: 0,
-        right: 0,
-        height: '1px',
-        background: 'linear-gradient(90deg, transparent 0%, rgba(0, 195, 255, 0.1) 50%, transparent 100%)',
-        boxShadow: '0 0 5px rgba(0, 195, 255, 0.3)',
-        zIndex: 1
-      }}></div>
-      <div style={{
-        position: 'absolute',
-        bottom: 0,
-        left: 0,
-        right: 0,
-        height: '1px',
-        background: 'linear-gradient(90deg, transparent 0%, rgba(0, 195, 255, 0.1) 50%, transparent 100%)',
-        boxShadow: '0 0 5px rgba(0, 195, 255, 0.3)',
-        zIndex: 1
-      }}></div>
-      <div style={{
-        position: 'absolute',
-        left: 0,
-        top: 0,
-        bottom: 0,
-        width: '1px',
-        background: 'linear-gradient(180deg, transparent 0%, rgba(0, 195, 255, 0.1) 50%, transparent 100%)',
-        boxShadow: '0 0 5px rgba(0, 195, 255, 0.3)',
-        zIndex: 1
-      }}></div>
-      <div style={{
-        position: 'absolute',
-        right: 0,
-        top: 0,
-        bottom: 0,
-        width: '1px',
-        background: 'linear-gradient(180deg, transparent 0%, rgba(0, 195, 255, 0.1) 50%, transparent 100%)',
-        boxShadow: '0 0 5px rgba(0, 195, 255, 0.3)',
-        zIndex: 1
-      }}></div>
+      <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: '1px', background: 'linear-gradient(90deg, transparent 0%, rgba(0, 195, 255, 0.1) 50%, transparent 100%)', boxShadow: '0 0 5px rgba(0, 195, 255, 0.3)', zIndex: 1 }}></div>
+      <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: '1px', background: 'linear-gradient(90deg, transparent 0%, rgba(0, 195, 255, 0.1) 50%, transparent 100%)', boxShadow: '0 0 5px rgba(0, 195, 255, 0.3)', zIndex: 1 }}></div>
+      <div style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: '1px', background: 'linear-gradient(180deg, transparent 0%, rgba(0, 195, 255, 0.1) 50%, transparent 100%)', boxShadow: '0 0 5px rgba(0, 195, 255, 0.3)', zIndex: 1 }}></div>
+      <div style={{ position: 'absolute', right: 0, top: 0, bottom: 0, width: '1px', background: 'linear-gradient(180deg, transparent 0%, rgba(0, 195, 255, 0.1) 50%, transparent 100%)', boxShadow: '0 0 5px rgba(0, 195, 255, 0.3)', zIndex: 1 }}></div>
 
       {/* Header Section with Stewie Avatar */}
-      <div 
+      <div
         style={{
           width: '100%',
           textAlign: 'center',
@@ -324,7 +422,7 @@ function Game() {
           alignItems: 'center'
         }}
       >
-        <h1 
+        <h1
           style={{
             margin: '0 0 5px 0',
             fontSize: '28px',
@@ -339,10 +437,10 @@ function Game() {
         >
           PLANETARY CHESS
         </h1>
-        
+
         {stewieAvatar}
-        
-        <div 
+
+        <div
           style={{
             backgroundColor: 'rgba(0, 30, 60, 0.7)',
             borderRadius: '8px',
@@ -355,7 +453,7 @@ function Game() {
             position: 'relative'
           }}
         >
-          <div 
+          <div
             style={{
               position: 'absolute',
               top: '-10px',
@@ -368,8 +466,8 @@ function Game() {
               borderBottom: '10px solid rgba(0, 30, 60, 0.7)',
             }}
           ></div>
-          
-          <p 
+
+          <p
             style={{
               color: '#e8f4ff',
               margin: 0,
@@ -388,8 +486,8 @@ function Game() {
             )}
           </p>
         </div>
-        
-        <div 
+
+        <div
           style={{
             color: '#7cb3e8',
             fontSize: '12px',
@@ -403,9 +501,9 @@ function Game() {
           <span style={{color: '#7cb3e8'}}>OF</span>{' '}
           <span style={{color: '#4aa8ff'}}>{totalQuestions}</span>
         </div>
-        
-        <button 
-          onClick={() => navigate('/')} 
+
+        <button
+          onClick={() => navigate('/')}
           style={{
             padding: '5px 10px',
             background: 'linear-gradient(135deg, #193366 0%, #2b4f8a 100%)',
@@ -436,9 +534,9 @@ function Game() {
           ← Return to Base
         </button>
       </div>
-  
+
       {/* Chessboard Section with Glowing Effect */}
-      <div 
+      <div
         style={{
           display: 'flex',
           justifyContent: 'center',
@@ -451,7 +549,7 @@ function Game() {
           margin: '0 auto'
         }}
       >
-        <div 
+        <div
           style={{
             width: '90%',
             maxWidth: '400px',
@@ -464,9 +562,9 @@ function Game() {
             border: '1px solid rgba(0, 195, 255, 0.2)'
           }}
         >
-          <Chessboard 
+          <Chessboard
             id="PlayVsAI"
-            position={game.fen()} 
+            position={game.fen()}
             onPieceDrop={onDrop}
             boardOrientation="black"
             customDarkSquareStyle={customDarkSquareStyle}
@@ -477,24 +575,14 @@ function Game() {
               boxShadow: '0 0 15px rgba(0, 195, 255, 0.2)'
             }}
           />
-          
+
           {/* Glowing border effect */}
-          <div style={{
-            position: 'absolute',
-            top: 0,
-            left: 0,
-            right: 0,
-            bottom: 0,
-            borderRadius: '10px',
-            boxShadow: '0 0 15px rgba(0, 195, 255, 0.1) inset',
-            pointerEvents: 'none',
-            zIndex: 10
-          }}></div>
+          <div style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, borderRadius: '10px', boxShadow: '0 0 15px rgba(0, 195, 255, 0.1) inset', pointerEvents: 'none', zIndex: 10 }}></div>
         </div>
       </div>
-  
+
       {/* Quiz Section */}
-      {gameState.isQuizVisible && (
+      {!gameState.isGameOver && gameState.isQuizVisible && ( // Only show quiz if game not over and visible flag is true
         <div style={{
           width: '90%',
           maxWidth: '400px',
@@ -522,7 +610,7 @@ function Game() {
           }}>
             {gameState.currentQuestion.question}
           </h3>
-          
+
           <div style={{
             display: 'grid',
             gap: '8px'
@@ -573,7 +661,7 @@ function Game() {
                   {String.fromCharCode(65 + index)}
                 </span>
                 {option}
-                
+
                 {/* Glow effect on hover */}
                 <div style={{
                   position: 'absolute',
@@ -610,7 +698,7 @@ function Game() {
           top: 0,
           left: 0,
           height: '100%',
-          width: isThinking ? '100%' : '30%',
+          width: isThinking ? '100%' : '30%', // Example width change
           background: 'linear-gradient(90deg, #054487, #00a2ff)',
           borderRadius: '2px',
           animation: isThinking ? 'pulse 1.5s infinite' : 'none',
@@ -643,7 +731,7 @@ function Game() {
         `}
       </style>
     </div>
-  ); 
+  );
 }
 
 export default Game;
